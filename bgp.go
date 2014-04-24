@@ -86,6 +86,9 @@ func BgpSvr(conn net.Conn) {
     fmt.Println("Open Message:")
     fmt.Println(openMsg)
     //send open back
+    SendOpen(conn)
+    for {
+    }
     conn.Close()
 }
 
@@ -107,10 +110,21 @@ func HandleOpenMessage(r *bytes.Reader) OpenMessage{
     return openMsg
 }
 
-func SendOpen() {
-    //b := [16]byte{255, 255, 255,255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}
-    //msghdr := MessageHeader{b, 43, 1}
-    openMsg := OpenMessage{4, 1, 180, 100, 0, []Parameter{}}
-    fmt.Println(openMsg)
-    // Build the packet - msghdr + openMsg
+func SendOpen(conn net.Conn) {
+    writebuf := new(bytes.Buffer)
+    b := [16]byte{255, 255, 255,255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}
+    msghdr := MessageHeader{b, 29, 1}
+    openMsg := OpenMessage{4, 2, 180, 100, 0, []Parameter{}}
+    err := binary.Write(writebuf, binary.BigEndian, &msghdr)
+    err = binary.Write(writebuf, binary.BigEndian, &openMsg.Version)
+    err = binary.Write(writebuf, binary.BigEndian, &openMsg.MyAS)
+    err = binary.Write(writebuf, binary.BigEndian, &openMsg.HoldTime)
+    err = binary.Write(writebuf, binary.BigEndian, &openMsg.BGPId)
+    err = binary.Write(writebuf, binary.BigEndian, &openMsg.OptParamLen)
+    if err != nil {
+        fmt.Println("error", err)
+    }
+    fmt.Println(writebuf.Bytes())
+    fmt.Println(len(writebuf.Bytes()))
+    conn.Write(writebuf.Bytes())
 }
