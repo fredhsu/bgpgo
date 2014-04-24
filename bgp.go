@@ -33,6 +33,24 @@ type Parameter struct {
     Value []byte
 }
 
+type UpdateMessage struct {
+    WithdrawnLength uint16
+    WithdrawnRoutes []byte
+    TotalPathAttr uint16
+    PathAttr []byte
+    Nlri []byte
+}
+
+type KeepaliveMessage struct {
+}
+
+type NotificationMessage struct {
+    ErrorCode uint8
+    ErrorSubcode uint8
+    Data []byte
+}
+
+
 func main() {
     println("Starting router")
 
@@ -63,32 +81,11 @@ func BgpSvr(conn net.Conn) {
     }
     binary.Read(buf, binary.BigEndian, &msghdr)
     fmt.Println(msghdr)
-    /*
-    openMsg := OpenMessage{}
-    binary.Read(buf, binary.BigEndian, &openMsg.Version)
-    binary.Read(buf, binary.BigEndian, &openMsg.MyAS)
-    binary.Read(buf, binary.BigEndian, &openMsg.HoldTime)
-    binary.Read(buf, binary.BigEndian, &openMsg.BGPId)
-    binary.Read(buf, binary.BigEndian, &openMsg.OptParamLen)
-    fmt.Println(openMsg)
+    //Determine msg type
     openMsg := HandleOpenMessage(buf)
-    param := Parameter{}
-    remain := openMsg.OptParamLen
-    binary.Read(buf, binary.BigEndian, &param.Type)
-    binary.Read(buf, binary.BigEndian, &param.Length)
-    param.Value = make([]byte, param.Length)
-    binary.Read(buf, binary.BigEndian, &param.Value)
-    remain = remain - param.Length - 2
-    fmt.Println(param, " buf: ", remain)
-    if remain > 0 {
-        fmt.Println("More stuff!")
-    } else {
-        fmt.Println("Finished!")
-        conn.Close()
-    }
-    */
-    openMsg := HandleOpenMessage(buf)
+    fmt.Println("Open Message:")
     fmt.Println(openMsg)
+    //send open back
     conn.Close()
 }
 
@@ -108,4 +105,12 @@ func HandleOpenMessage(r *bytes.Reader) OpenMessage{
     remain = remain - param.Length - 2
     fmt.Println(param, " buf: ", remain)
     return openMsg
+}
+
+func SendOpen() {
+    //b := [16]byte{255, 255, 255,255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}
+    //msghdr := MessageHeader{b, 43, 1}
+    openMsg := OpenMessage{4, 1, 180, 100, 0, []Parameter{}}
+    fmt.Println(openMsg)
+    // Build the packet - msghdr + openMsg
 }
