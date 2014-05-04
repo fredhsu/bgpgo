@@ -9,7 +9,9 @@ import (
 )
 
 const (
-    RECV_BUF_LEN = 1024
+    RECV_BUF_LEN uint16 = 1024
+    MSG_HEADER_LEN uint16 = 19
+    OPEN_HEADER_LEN uint16 = 10
 )
 
 type MessageHeader struct {
@@ -17,6 +19,12 @@ type MessageHeader struct {
     Length uint16
     Type uint8
 }
+
+func NewMessageHeader(l uint16, t uint8) *MessageHeader {
+    marker := [16]byte{255, 255, 255,255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}
+    return &MessageHeader{Marker: marker, Length: l, Type: t}
+}
+
 
 type OpenMessage struct {
     Version uint8
@@ -51,24 +59,6 @@ type NotificationMessage struct {
 }
 
 
-func main() {
-    println("Starting router")
-
-    l, err := net.Listen("tcp", "0.0.0.0:179")
-    if err != nil {
-        println("error listening to bgp port", err.Error())
-        os.Exit(1)
-    }
-    defer l.Close()
-    //for {
-        conn, err := l.Accept()
-        if err != nil {
-            println("Error accepting connection:", err.Error())
-            return
-        }
-        BgpSvr(conn)
-    //}
-}
 
 func BgpSvr(conn net.Conn) {
     msghdr := MessageHeader{}
@@ -112,8 +102,11 @@ func HandleOpenMessage(r *bytes.Reader) OpenMessage{
 
 func SendOpen(conn net.Conn) {
     writebuf := new(bytes.Buffer)
-    b := [16]byte{255, 255, 255,255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}
-    msghdr := MessageHeader{b, 29, 1}
+    //b := [16]byte{255, 255, 255,255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}
+    msglen := MSG_HEADER_LEN + OPEN_HEADER_LEN + 0
+    fmt.Println("Msg len: ", msglen)
+    msghdr := *NewMessageHeader(msglen, 1)
+    //var msghdr MessageHeader = *NewMessageHeader(msglen, 1)
     openMsg := OpenMessage{4, 2, 180, 100, 0, []Parameter{}}
     err := binary.Write(writebuf, binary.BigEndian, &msghdr)
     err = binary.Write(writebuf, binary.BigEndian, &openMsg.Version)
@@ -127,4 +120,23 @@ func SendOpen(conn net.Conn) {
     fmt.Println(writebuf.Bytes())
     fmt.Println(len(writebuf.Bytes()))
     conn.Write(writebuf.Bytes())
+}
+
+func main() {
+    println("Starting router")
+
+    l, err := net.Listen("tcp", "0.0.0.0:179")
+    if err != nil {
+        println("error listening to bgp port", err.Error())
+        os.Exit(1)
+    }
+    defer l.Close()
+    //for {
+        conn, err := l.Accept()
+        if err != nil {
+            println("Error accepting connection:", err.Error())
+            return
+        }
+        BgpSvr(conn)
+    //}
 }
