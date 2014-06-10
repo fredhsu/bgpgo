@@ -6,7 +6,7 @@ import (
 )
 
 func TestIdle(t *testing.T) {
-    in := input{"bgpstart"}
+    in := input{START}
     newState, stateName := idle(&in)
     if stateName != CONNECT && newState != nil {
         t.Errorf("Wrong state")
