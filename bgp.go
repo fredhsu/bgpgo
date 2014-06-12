@@ -1,4 +1,4 @@
-package bgpgo
+package main
 
 import (
     "bytes"
@@ -6,6 +6,7 @@ import (
     "os"
     "encoding/binary"
     "fmt"
+    "time"
 )
 
 const (
@@ -26,6 +27,7 @@ func NewMessageHeader(l uint16, t uint8) *MessageHeader {
     return &MessageHeader{Marker: marker, Length: l, Type: t}
 }
 
+// Keepalive is just the header
 
 type OpenMessage struct {
     Version uint8
@@ -50,9 +52,6 @@ type UpdateMessage struct {
     Nlri []byte
 }
 
-// Keepalive is just the header
-type KeepaliveMessage struct {
-}
 
 type NotificationMessage struct {
     ErrorCode uint8
@@ -77,7 +76,7 @@ func BgpSvr(conn net.Conn) {
     msghdr := MessageHeader{}
     buf := RecvMsg(conn)
     binary.Read(buf, binary.BigEndian, &msghdr)
-    fmt.Println(msghdr)
+    fmt.Println("first msghdr:", msghdr)
     //Determine msg type
     openMsg := HandleOpenMessage(buf)
     fmt.Println("Open Message Received:")
@@ -89,9 +88,23 @@ func BgpSvr(conn net.Conn) {
     // Listen for Open Message From Peer
     // State: OpenConfirm
     // Listen for Keepalive
+    buf = RecvMsg(conn)
     binary.Read(buf, binary.BigEndian, &msghdr)
-    fmt.Println(msghdr)
+    switch msghdr.Type {
+    case 1:
+        fmt.Println("open")
+    case 2:
+        fmt.Println( "update")
+    case 3:
+        fmt.Println( "notification")
+    case 4:
+        fmt.Println( "keepalive")
+    case 5:
+        fmt.Println( "route-refresh")
+    }
     for {
+        SendKeepalive(conn)
+        time.Sleep(10 * time.Second)
     }
     conn.Close()
 }
@@ -112,6 +125,20 @@ func HandleOpenMessage(r *bytes.Reader) OpenMessage{
     remain = remain - param.Length - 2
     fmt.Println(param, " buf: ", remain)
     return openMsg
+}
+
+func SendKeepalive(conn net.Conn) {
+    fmt.Println("Sending Keepalive")
+    writebuf := new(bytes.Buffer)
+    msglen := MSG_HEADER_LEN
+    msghdr := *NewMessageHeader(msglen, 4)
+    err := binary.Write(writebuf, binary.BigEndian, &msghdr)
+    if err != nil {
+        fmt.Println("error", err)
+    }
+    fmt.Println(writebuf.Bytes())
+    fmt.Println(len(writebuf.Bytes()))
+    conn.Write(writebuf.Bytes())
 }
 
 func SendOpen(conn net.Conn) {
