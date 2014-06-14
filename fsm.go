@@ -109,7 +109,7 @@ func established(in *input) (stateFn, State) {
 }
 
 
-func run(j chan *input) {
+func runfsm(j chan *input) {
     startState := idle
     stateName := IDLE
     for state := startState; state != nil; {
@@ -123,7 +123,7 @@ func main() {
     // Change them to return a value + statefn?
     ci := make(chan *input)
     in := input{START}
-    go run(ci)
+    go runfsm(ci)
     ci <- &in
     ci <- &input{TRANSPORT_OPEN}
     ci <- &input{OPEN_RECV}

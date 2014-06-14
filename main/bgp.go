@@ -3,7 +3,7 @@ package bgpgo
 import (
     "bytes"
     "net"
-    //"os"
+    "os"
     "encoding/binary"
     "fmt"
     "time"
@@ -77,15 +77,12 @@ func BgpSvr(conn net.Conn) {
     start := input{START}
     go runfsm(fsmch)
     fsmch <- &start
-    fsmch <- &input{TRANSPORT_OPEN}
 
     msghdr := MessageHeader{}
     buf := RecvMsg(conn)
     binary.Read(buf, binary.BigEndian, &msghdr)
     fmt.Println("first msghdr:", msghdr)
-
     //Determine msg type
-    fsmch <- &input{OPEN_RECV}
     openMsg := HandleOpenMessage(buf)
     fmt.Println("Open Message Received:")
     fmt.Println(openMsg)
@@ -100,14 +97,12 @@ func BgpSvr(conn net.Conn) {
     binary.Read(buf, binary.BigEndian, &msghdr)
     switch msghdr.Type {
     case 1:
-        fsmch <- &input{OPEN_RECV}
         fmt.Println("open")
     case 2:
         fmt.Println( "update")
     case 3:
         fmt.Println( "notification")
     case 4:
-        fsmch <- &input{KEEPALIVE_RECV}
         fmt.Println( "keepalive")
     case 5:
         fmt.Println( "route-refresh")
@@ -175,7 +170,7 @@ func SendOpen(conn net.Conn) {
     fmt.Println(len(writebuf.Bytes()))
     conn.Write(writebuf.Bytes())
 }
-/*
+
 func main() {
     println("Starting router")
 
@@ -194,4 +189,3 @@ func main() {
         BgpSvr(conn)
     //}
 }
-*/
