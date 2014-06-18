@@ -10,6 +10,7 @@ package bgpgo
 
 import (
     "fmt"
+    "time"
 )
 
 type State int
@@ -49,6 +50,7 @@ type input struct {
 
 func idle(in *input) (stateFn, State) {
     if in.event == START {
+        // Start connectretry timer -- is this another routine?
         return connect, CONNECT
     } 
     return idle, IDLE
@@ -112,10 +114,17 @@ func established(in *input) (stateFn, State) {
 func runfsm(j chan *input) {
     startState := idle
     stateName := IDLE
+    timerChan := time.NewTimer(time.Second * 40).C
+    // Pass the timer in or attach to in for all the timers
+    // Or create a timers struct with all the timers
     for state := startState; state != nil; {
-        in := <-j
-        state, stateName = state(in)
-        fmt.Println("Current State: ", stateName)
+        select {
+        case in := <-j:
+            state, stateName = state(in)
+            fmt.Println("Current State: ", stateName)
+        case <- timerChan:
+            fmt.Println("Timer expired")
+        }
     }
 }
 /*

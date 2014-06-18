@@ -3,7 +3,7 @@ package bgpgo
 import (
     "bytes"
     "net"
-    //"os"
+    "os"
     "encoding/binary"
     "fmt"
     "time"
@@ -71,12 +71,27 @@ func RecvMsg(conn net.Conn) *bytes.Reader {
     return buf
 }
 
+func OpenTransport() net.Conn {
+    l, err := net.Listen("tcp", "0.0.0.0:179")
+    if err != nil {
+        println("error listening to bgp port", err.Error())
+        os.Exit(1)
+    }
+    defer l.Close()
+    conn, err := l.Accept()
+    if err != nil {
+        println("Error accepting connection:", err.Error())
+        return nil
+    }
+    return conn
+}
 
-func BgpSvr(conn net.Conn) {
+//func BgpSvr(conn net.Conn, fsmch chan *input) {
+func BgpSvr() {
     fsmch := make(chan *input)
-    start := input{START}
     go runfsm(fsmch)
-    fsmch <- &start
+    fsmch <- &input{START}
+    conn := OpenTransport()
     fsmch <- &input{TRANSPORT_OPEN}
 
     msghdr := MessageHeader{}
@@ -103,13 +118,16 @@ func BgpSvr(conn net.Conn) {
         fsmch <- &input{OPEN_RECV}
         fmt.Println("open")
     case 2:
+        fsmch <- &input{UPDATE_RECV}
         fmt.Println( "update")
     case 3:
+        fsmch <- &input{NOTIFICATION_RECV}
         fmt.Println( "notification")
     case 4:
         fsmch <- &input{KEEPALIVE_RECV}
         fmt.Println( "keepalive")
     case 5:
+        fsmch <- &input{OPEN_RECV}
         fmt.Println( "route-refresh")
     }
     for {

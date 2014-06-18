@@ -1,14 +1,15 @@
 package main
 
 import (
-    "net"
-    "os"
+    //"net"
+    //"os"
     "github.com/fredhsu/bgpgo"
 )
 
 func main() {
     println("Starting router")
 
+    /*
     l, err := net.Listen("tcp", "0.0.0.0:179")
     if err != nil {
         println("error listening to bgp port", err.Error())
@@ -23,4 +24,6 @@ func main() {
         }
         bgpgo.BgpSvr(conn)
     //}
+    */
+    bgpgo.BgpSvr()
 }
