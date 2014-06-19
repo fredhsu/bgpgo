@@ -72,6 +72,7 @@ func RecvMsg(conn net.Conn) *bytes.Reader {
 }
 
 func OpenTransport() net.Conn {
+    //TODO:  Should start connection to peer as well as listen
     l, err := net.Listen("tcp", "0.0.0.0:179")
     if err != nil {
         println("error listening to bgp port", err.Error())
@@ -86,7 +87,6 @@ func OpenTransport() net.Conn {
     return conn
 }
 
-//func BgpSvr(conn net.Conn, fsmch chan *input) {
 func BgpSvr() {
     fsmch := make(chan *input)
     go runfsm(fsmch)
@@ -94,6 +94,7 @@ func BgpSvr() {
     conn := OpenTransport()
     fsmch <- &input{TRANSPORT_OPEN}
 
+    // Wait for message
     msghdr := MessageHeader{}
     buf := RecvMsg(conn)
     binary.Read(buf, binary.BigEndian, &msghdr)
