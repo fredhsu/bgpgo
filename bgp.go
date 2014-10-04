@@ -132,10 +132,36 @@ func BgpSvr() {
         fmt.Println( "route-refresh")
     }
     for {
+        // Should be in established
+        // should get an update message
+        buf = RecvMsg(conn)
+        binary.Read(buf, binary.BigEndian, &msghdr)
+        if msghdr.Type == 2 {
+            HandleUpdateMessage(buf)
+        }
         SendKeepalive(conn)
         time.Sleep(10 * time.Second)
     }
     conn.Close()
+}
+
+
+func HandleUpdateMessage(r *bytes.Reader) UpdateMessage{
+    updateMsg := UpdateMessage{}
+    binary.Read(r, binary.BigEndian, &updateMsg.WithdrawnLength)
+    updateMsg.WithdrawnRoutes = make([]byte, updateMsg.WithdrawnLength)
+    // TODO: finish this part
+    binary.Read(r, binary.BigEndian, &updateMsg.WithdrawnRoutes)
+    binary.Read(r, binary.BigEndian, &updateMsg.TotalPathAttr)
+    updateMsg.PathAttr = make([]byte, updateMsg.TotalPathAttr)
+    binary.Read(r, binary.BigEndian, &updateMsg.PathAttr)
+    binary.Read(r, binary.BigEndian, &updateMsg.Nlri)
+    /*WithdrawnLength uint16
+    WithdrawnRoutes []byte
+    TotalPathAttr uint16
+    PathAttr []byte
+    Nlri []byte*/
+    return updateMsg
 }
 
 func HandleOpenMessage(r *bytes.Reader) OpenMessage{
