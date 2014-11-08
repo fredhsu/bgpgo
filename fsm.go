@@ -9,124 +9,131 @@
 package bgpgo
 
 import (
-    "fmt"
-    "time"
+	"fmt"
+	"net"
+	"time"
 )
 
 type State int
 
 const (
-    IDLE State = iota
-    CONNECT
-    OPEN_SENT
-    ACTIVE
-    OPEN_CONFIRM
-    ESTABLISHED
+	IDLE State = iota
+	CONNECT
+	OPEN_SENT
+	ACTIVE
+	OPEN_CONFIRM
+	ESTABLISHED
 )
 
 type Event int
-const (
-    START Event = iota
-    STOP
-    TRANSPORT_OPEN
-    TRANSPORT_CLOSED
-    TRANSPORT_FAILED
-    TRANSPORT_ERROR
-    CONNECT_RETRY_EXPIRED
-    HOLD_EXPIRED
-    KEEPALIVE_EXPIRED
-    OPEN_RECV
-    KEEPALIVE_RECV
-    UPDATE_RECV
-    NOTIFICATION_RECV
-)
 
+const (
+	START Event = iota
+	STOP
+	TRANSPORT_OPEN
+	TRANSPORT_CLOSED
+	TRANSPORT_FAILED
+	TRANSPORT_ERROR
+	CONNECT_RETRY_EXPIRED
+	HOLD_EXPIRED
+	KEEPALIVE_EXPIRED
+	OPEN_RECV
+	KEEPALIVE_RECV
+	UPDATE_RECV
+	NOTIFICATION_RECV
+)
 
 type stateFn func(*input) (stateFn, State)
 
 type input struct {
-    event Event
+	event Event
+	conn  net.Conn
 }
 
 func idle(in *input) (stateFn, State) {
-    if in.event == START {
-        // Start connectretry timer -- is this another routine?
-        return connect, CONNECT
-    } 
-    return idle, IDLE
+	if in.event == START {
+		// Start connectretry timer -- is this another routine?
+		return connect, CONNECT
+	}
+	return idle, IDLE
 }
 
 func connect(in *input) (stateFn, State) {
-    switch in.event {
-    case START, CONNECT_RETRY_EXPIRED:
-        return connect, CONNECT
-    case TRANSPORT_OPEN:
-        return openSent, OPEN_SENT
-    case TRANSPORT_FAILED:
-        return active, ACTIVE
-    }
-    return idle, IDLE
+	switch in.event {
+	case START, CONNECT_RETRY_EXPIRED:
+		return connect, CONNECT
+	case TRANSPORT_OPEN:
+		// Send Open
+		SendOpen(in.conn)
+		return openSent, OPEN_SENT
+	case TRANSPORT_FAILED:
+		return active, ACTIVE
+	}
+	return idle, IDLE
 }
 
 func active(in *input) (stateFn, State) {
-    switch in.event {
-    case START, TRANSPORT_FAILED:
-        return active, ACTIVE
-    case CONNECT_RETRY_EXPIRED:
-        return connect, CONNECT
-    case TRANSPORT_OPEN:
-        return openSent, OPEN_SENT
-    }
-    return idle, IDLE
+	switch in.event {
+	case START, TRANSPORT_FAILED:
+		return active, ACTIVE
+	case CONNECT_RETRY_EXPIRED:
+		return connect, CONNECT
+	case TRANSPORT_OPEN:
+		// Send Open
+		SendOpen(in.conn)
+		return openSent, OPEN_SENT
+	}
+	return idle, IDLE
 }
 
 func openSent(in *input) (stateFn, State) {
-    switch in.event {
-    case START:
-        return openSent, OPEN_SENT
-        case OPEN_RECV:
-            return openConfirm, OPEN_CONFIRM
-        case TRANSPORT_CLOSED:
-            return active, ACTIVE
-    }
-    return idle, IDLE
+	switch in.event {
+	case START:
+		return openSent, OPEN_SENT
+	case OPEN_RECV:
+		return openConfirm, OPEN_CONFIRM
+	case TRANSPORT_CLOSED:
+		return active, ACTIVE
+	}
+	return idle, IDLE
 }
 
 func openConfirm(in *input) (stateFn, State) {
-    switch in.event {
-    case START, KEEPALIVE_EXPIRED:
-        return openConfirm, OPEN_CONFIRM
-        case KEEPALIVE_RECV:
-            return established, ESTABLISHED
-    }
-    return idle, IDLE
+	switch in.event {
+	case START, KEEPALIVE_EXPIRED:
+		return openConfirm, OPEN_CONFIRM
+	case KEEPALIVE_RECV:
+		return established, ESTABLISHED
+	}
+	return idle, IDLE
 }
 
 func established(in *input) (stateFn, State) {
-    switch in.event {
-        case START, KEEPALIVE_EXPIRED, KEEPALIVE_RECV, UPDATE_RECV:
-            return established, ESTABLISHED
-    }
-    return idle, IDLE
+	switch in.event {
+	case START, KEEPALIVE_EXPIRED, KEEPALIVE_RECV, UPDATE_RECV:
+		// If updated is received, should process
+		return established, ESTABLISHED
+	}
+	return idle, IDLE
 }
-
 
 func runfsm(j chan *input) {
-    startState := idle
-    stateName := IDLE
-    timerChan := time.NewTimer(time.Second * 40).C
-    // Pass the timer in or attach to in for all the timers
-    // Or create a timers struct with all the timers
-    for state := startState; state != nil; {
-        select {
-        case in := <-j:
-            state, stateName = state(in)
-            fmt.Println("Current State: ", stateName)
-        case <- timerChan:
-            fmt.Println("Timer expired")
-        }
-    }
+	startState := idle
+	stateName := IDLE
+	timerChan := time.NewTimer(time.Second * 40).C
+	// Pass the timer in or attach to in for all the timers
+	// Or create a timers struct with all the timers
+	for state := startState; state != nil; {
+		select {
+		case in := <-j:
+			state, stateName = state(in)
+			fmt.Println("Current State: ", stateName)
+		case <-timerChan:
+			fmt.Println("Timer expired")
+		}
+	}
 }
+
 /*
 func main() {
     // Change them to return a value + statefn?
