@@ -25,6 +25,12 @@ const (
 	ESTABLISHED
 )
 
+var states = [...]string {"IDLE","CONNECT","Open_Sent","active","open_confirm", "established",}
+
+func (state State) String() string {
+    return states[state]
+ }
+
 type Event int
 
 const (

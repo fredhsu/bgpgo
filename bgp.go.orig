@@ -7,13 +7,12 @@ import (
 	"net"
 	"os"
 	"time"
-    "io"
 )
 
 type MessageType int
 
 const (
-	RECV_BUF_LEN    uint16 = 1024
+	RECV_BUF_LEN    uint16 = 8196
 	MSG_HEADER_LEN  uint16 = 19
 	OPEN_HEADER_LEN uint16 = 10
 )
@@ -26,12 +25,6 @@ NOTIFICATION
 KEEPALIVE
 ROUTE_REFRESH
 )
-
-var messagetypes = [...]string {"","OPEN","UPDATE","NOTIFICATION","KEEPALIVE","ROUTE_REFRESH",}
-
-func (msg MessageType) String() string {
-    return messagetypes[msg]
- }
 
 type MessageHeader struct {
 	Marker [16]byte
@@ -69,11 +62,6 @@ type UpdateMessage struct {
 	Nlri            []byte
 }
 
-type Nlri struct {
-    Length byte
-    Prefix []byte
-}
-
 type NotificationMessage struct {
 	ErrorCode    uint8
 	ErrorSubcode uint8
@@ -91,12 +79,16 @@ func RecvMsg(conn net.Conn) *bytes.Reader {
 	return buf
 }
 
-func RecvMsg2(conn net.Conn) bytes.Buffer {
+func RecvMsg2(conn net.Conn) *bytes.Reader {
     // io.Copy(c, conn)
-    var b bytes.Buffer
-    // buf := bytes.NewReader(b)
-    io.Copy(&b, conn)
-    return b
+    b := make([]byte, RECV_BUF_LEN)
+    _, err := conn.Read(b)
+    buf := bytes.NewReader(b)
+    if err != nil {
+        println("Error reading:", err.Error())
+        return nil
+    }
+    return buf
 }
 func OpenTransport() net.Conn {
 	//TODO:  Should start connection to peer as well as listen
@@ -114,54 +106,49 @@ func OpenTransport() net.Conn {
 	return conn
 }
 
-func HandleMessage(msghdr MessageHeader, r *bytes.Reader) MessageType {
+// func HandleMessage(r *bytes.Reader) {
+//     msghdr := MessageHeader{}
+//     binary.Read(buf, binary.BigEndian, &msghdr)
+//     switch msghdr.Type {
+//     case 1:
+//         fsmch <- &input{OPEN_RECV}
+//         fmt.Println("open")
+//         openMsg := HandleOpenMessage(buf)
+//     case 2:
+//         fsmch <- &input{UPDATE_RECV}
+//         fmt.Println( "update")
+//     case 3:
+//         fsmch <- &input{NOTIFICATION_RECV}
+//         fmt.Println( "notification")
+//     case 4:
+//         fsmch <- &input{KEEPALIVE_RECV}
+//         fmt.Println( "keepalive")
+//     case 5:
+//         fsmch <- &input{OPEN_RECV}
+//         fmt.Println( "route-refresh")
+//     }
+// }
+
+func getMessageType(msghdr MessageHeader, buf *bytes.Reader) MessageType {
+	fmt.Printf("received: ")
 	switch msghdr.Type {
 	case 1:
-        // fsmch <- &input{OPEN_RECV, conn}
-        open := HandleOpen(r)
-        fmt.Println(open)
+		fmt.Println("open")
         return OPEN
 	case 2:
-        // fsmch <- &input{UPDATE_RECV, conn}
-        update := HandleUpdate(msghdr.Length, r)
-        fmt.Println(update)
-        fmt.Println(update.Nlri)
-        fmt.Printf("First prefix : ")
-        fmt.Println(update.Nlri[0])
-        numOctets := int(update.Nlri[0] / 8)
-        fmt.Printf("Length in Octets: %d\n", numOctets)
-        fmt.Printf("Prefix: ")
-        for i := 0; i < numOctets; i++ {
-            fmt.Printf("%d.", update.Nlri[1+i])
-        }
-        fmt.Println()
-        // Get through that many bits to define prefix
-        // UpdateRib(update)
+		fmt.Println("update")
         return UPDATE
 	case 3:
-        // fsmch <- &input{NOTIFICATION_RECV}
-        notification := HandleNotification(r)
-        fmt.Println(notification)
+		fmt.Println("notification")
         return NOTIFICATION
 	case 4:
-        // fsmch <- &input{KEEPALIVE_RECV}
-        HandleKeepalive(r)
+		fmt.Println("keepalive")
         return KEEPALIVE
 	case 5:
-        // fsmch <- &input{ROUTE_REFRESH}
-        // HandleRouteRefresh(r)
+		fmt.Println("route-refresh")
         return ROUTE_REFRESH
 	}
     return 0
-}
-
-func MessageListener(conn net.Conn) MessageType {
-    msghdr := MessageHeader{}
-    r := RecvMsg(conn)
-    binary.Read(r, binary.BigEndian, &msghdr)
-    msgtype := HandleMessage(msghdr, r)
-    fmt.Println("Received message of type: ", msgtype)
-    return msgtype
 }
 
 func BgpSvr() {
@@ -172,67 +159,79 @@ func BgpSvr() {
 	fsmch <- &input{TRANSPORT_OPEN, conn}
 
 	// Wait for message
-    MessageListener(conn)
+	msghdr := MessageHeader{}
+	buf := RecvMsg(conn)
+	binary.Read(buf, binary.BigEndian, &msghdr)
+	fmt.Println("msghdr:", msghdr)
+
+	//Determine msg type
+	fsmch <- &input{OPEN_RECV, conn}
+	openMsg := HandleOpenMessage(buf)
+	fmt.Println("Open Message Received:")
+	fmt.Println(openMsg)
 	//send open back
 	// SendOpen(conn)
 	// State: OpenSent
 	// State: OpenConfirm
 	SendKeepalive(conn)
-    MessageListener(conn)
-
 	// Listen for Keepalive
-	// SendUpdate(conn)
-    go func(conn net.Conn) {
-        for {
-         SendKeepalive(conn)
-         time.Sleep(10 * time.Second)
-         // May need to spawn this
-         // Need to keep checking for messages
+	SendUpdate(conn)
+
+	buf = RecvMsg(conn)
+	binary.Read(buf, binary.BigEndian, &msghdr)
+	m := getMessageType(msghdr, buf)
+    fmt.Println("one")
+   if m == UPDATE {
+        HandleUpdateMessage(buf)
     }
 
-    }(conn)
-    for {
-        MessageListener(conn)
+	buf = RecvMsg(conn)
+	binary.Read(buf, binary.BigEndian, &msghdr)
+	m = getMessageType(msghdr, buf)
+    fmt.Println("two")
+    if m == UPDATE {
+        HandleUpdateMessage(buf)
     }
-	// conn.Close()
+
+	//Send Update
+
+	// switch msghdr.Type {
+	// case 1:
+	// 	fsmch <- &input{OPEN_RECV, conn}
+	// 	fmt.Println("open")
+	// case 2:
+	// 	fsmch <- &input{UPDATE_RECV, conn}
+	// 	HandleUpdateMessage(buf)
+	// 	fmt.Println("update")
+	// case 3:
+	// 	fsmch <- &input{NOTIFICATION_RECV, conn}
+	// 	fmt.Println("notification")
+	// case 4:
+	// 	fsmch <- &input{KEEPALIVE_RECV, conn}
+	// 	fmt.Println("keepalive")
+	// case 5:
+	// 	fsmch <- &input{OPEN_RECV, conn}
+	// 	fmt.Println("route-refresh")
+	// }
+
+	buf = RecvMsg(conn)
+	binary.Read(buf, binary.BigEndian, &msghdr)
+	m = getMessageType(msghdr, buf)
+    fmt.Println("three")
+   if m == UPDATE {
+        HandleUpdateMessage(buf)
+    }
+	for {
+		SendKeepalive(conn)
+		time.Sleep(10 * time.Second)
+		// May need to spawn this
+		// Need to keep checking for messages
+	}
+	conn.Close()
 }
 
-func HandleOpen(r *bytes.Reader) OpenMessage {
-	openMsg := OpenMessage{}
-	binary.Read(r, binary.BigEndian, &openMsg.Version)
-	binary.Read(r, binary.BigEndian, &openMsg.MyAS)
-	binary.Read(r, binary.BigEndian, &openMsg.HoldTime)
-	binary.Read(r, binary.BigEndian, &openMsg.BGPId)
-	binary.Read(r, binary.BigEndian, &openMsg.OptParamLen)
-	param := Parameter{}
-	remain := openMsg.OptParamLen
-	binary.Read(r, binary.BigEndian, &param.Type)
-	binary.Read(r, binary.BigEndian, &param.Length)
-	param.Value = make([]byte, param.Length)
-	binary.Read(r, binary.BigEndian, &param.Value)
-	remain = remain - param.Length - 2
-	return openMsg
-}
 
-func HandleUpdate(msglen uint16, r *bytes.Reader) UpdateMessage {
-	updateMsg := UpdateMessage{}
-	binary.Read(r, binary.BigEndian, &updateMsg.WithdrawnLength)
-	updateMsg.WithdrawnRoutes = make([]byte, updateMsg.WithdrawnLength)
-	binary.Read(r, binary.BigEndian, &updateMsg.WithdrawnRoutes)
-	binary.Read(r, binary.BigEndian, &updateMsg.TotalPathAttr)
-	updateMsg.PathAttr = make([]byte, updateMsg.TotalPathAttr)
-    binary.Read(r, binary.BigEndian, &updateMsg.PathAttr)
-    var bgphdrlen uint16
-    bgphdrlen = 23
-    nlriLen := msglen - bgphdrlen - updateMsg.TotalPathAttr - updateMsg.WithdrawnLength
-    updateMsg.Nlri = make([]byte, nlriLen)
-    binary.Read(r, binary.BigEndian, &updateMsg.Nlri)
-    fmt.Println(updateMsg)
-    fmt.Println("Nlri len: ", nlriLen)
-	return updateMsg
-}
-
-func HandleNotification(r *bytes.Reader) NotificationMessage {
+func HandleNotificationMessage(r *bytes.Reader) NotificationMessage {
 	notificationMsg := NotificationMessage{}
 	binary.Read(r, binary.BigEndian, &notificationMsg.ErrorCode)
 	binary.Read(r, binary.BigEndian, &notificationMsg.ErrorSubcode)
@@ -241,7 +240,24 @@ func HandleNotification(r *bytes.Reader) NotificationMessage {
 	return notificationMsg
 }
 
-func HandleKeepalive(r *bytes.Reader)  {
+func HandleUpdateMessage(r *bytes.Reader) UpdateMessage{
+    updateMsg := UpdateMessage{}
+    binary.Read(r, binary.BigEndian, &updateMsg.WithdrawnLength)
+    updateMsg.WithdrawnRoutes = make([]byte, updateMsg.WithdrawnLength)
+    // TODO: finish this part
+    binary.Read(r, binary.BigEndian, &updateMsg.WithdrawnRoutes)
+    binary.Read(r, binary.BigEndian, &updateMsg.TotalPathAttr)
+    updateMsg.PathAttr = make([]byte, updateMsg.TotalPathAttr)
+    binary.Read(r, binary.BigEndian, &updateMsg.PathAttr)
+    binary.Read(r, binary.BigEndian, &updateMsg.Nlri)
+    /*WithdrawnLength uint16
+    WithdrawnRoutes []byte
+    TotalPathAttr uint16
+    PathAttr []byte
+    Nlri []byte*/
+        fmt.Println(updateMsg)
+
+    return updateMsg
 }
 
 func SendKeepalive(conn net.Conn) {
@@ -253,6 +269,8 @@ func SendKeepalive(conn net.Conn) {
 	if err != nil {
 		fmt.Println("error", err)
 	}
+	fmt.Println(writebuf.Bytes())
+	fmt.Println(len(writebuf.Bytes()))
 	conn.Write(writebuf.Bytes())
 }
 
@@ -316,3 +334,24 @@ func SendUpdate(conn net.Conn) {
 	fmt.Println(len(writebuf.Bytes()))
 	conn.Write(writebuf.Bytes())
 }
+
+/*
+func main() {
+    println("Starting router")
+
+    l, err := net.Listen("tcp", "0.0.0.0:179")
+    if err != nil {
+        println("error listening to bgp port", err.Error())
+        os.Exit(1)
+    }
+    defer l.Close()
+    //for {
+        conn, err := l.Accept()
+        if err != nil {
+            println("Error accepting connection:", err.Error())
+            return
+        }
+        BgpSvr(conn)
+    //}
+}
+*/
